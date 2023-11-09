@@ -5,6 +5,36 @@ import '../assets/partials.js';
 
 import { hbsAsyncRender, registerAsyncHelper } from "hbs-async-render";
 
+function formatAddress(venue) {
+  // Extract the address components from the venue object
+  const { name, address, city, state, postalCode } = venue;
+
+  // Create the formatted address string
+  const formattedAddress = `${address}, ${city}, ${state}, ${postalCode}`;
+
+  return formattedAddress;
+}
+
+function formatDate(date) {
+  const optionsDate = {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  };
+
+  const optionsTime = {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  };
+
+  const datePart = date.toLocaleDateString('en-US', optionsDate);
+  const timePart = date.toLocaleTimeString('en-US', optionsTime);
+
+  return `${datePart} at ${timePart}`;
+}
+
 const jobBoardFeed = 'https://events.api.tampa.dev/';
 
 //async helper func that capitalizes crap
@@ -154,7 +184,40 @@ async function handleRequest(request) {
   //console.log(await JSON.stringify(filteredData))
   //console.log(await JSON.stringify(filteredData['tampadevs']['eventSearch']['edges']))
 
-  return new Response(await hbsAsyncRender(Handlebars, 'widget', { meetupDetails: filteredData, url_params: params }), init);
+  const TD = filteredData['tampadevs'];
+
+  const date = new Date(TD['eventSearch']['edges'][0]['node']['dateTime']);
+  const dayNumber = date.getDate();
+  const month = date.toLocaleString('default', { month: 'short' });
+
+  const address = formatAddress(TD['eventSearch']['edges'][0]['node']['venue']);
+  const encodedAddress = encodeURIComponent(address);
+  const googleMapsUrl = `https://www.google.com/maps?q=${encodedAddress}`;
+
+  const event = {
+    name: TD['name'],
+    date: formatDate(date),
+    dayNumber: dayNumber,
+    googleMapsUrl: googleMapsUrl,
+    month: month,
+    address: address,
+    node: TD['eventSearch']['edges'][0]['node'],
+  };
+
+  const eventString = JSON.stringify(event, null, 2);
+
+  return new Response(
+    await hbsAsyncRender(
+      Handlebars,
+      'widget', {
+      event: event,
+      eventString: eventString,
+      meetupDetails: filteredData,
+      meetupDetailsString: JSON.stringify(filteredData, null, 2),
+      url_params: params,
+    }),
+    init
+  );
 
 }
 
