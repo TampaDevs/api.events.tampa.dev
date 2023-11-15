@@ -37,51 +37,12 @@ function formatDate(date) {
 
 const jobBoardFeed = 'https://events.api.tampa.dev/';
 
-//async helper func that capitalizes crap
-registerAsyncHelper(Handlebars, 'capitalize', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(options.replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()));
-  });
-});
-//adds utm source whatever that means - specific for job board
-registerAsyncHelper(Handlebars, 'add_utm', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(options + "?utm_source=job_board_widget_v1&utm_medium=organic&utm_campaign=tdjobs_external_embed");
-  });
-});
-//truncates to 32 characters
-registerAsyncHelper(Handlebars, 'truncate', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(options.replace(/^(.{32}[^\s]*).*/, "$1") + "...");
-  });
-});
-//formats title
-registerAsyncHelper(Handlebars, 'title_fmt', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(options.length > 40 ? options.replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()).replace(/^(.{32}[^\s]*).*/, "$1") + "..." : options);
-  });
-});
-
 
 function returnMapsLink(address, city, state, postalCode) {
   // Construct the Google Maps link using the provided location details
   const formattedAddress = encodeURIComponent(`${address}, ${city}, ${state} ${postalCode}`);
   return `https://www.google.com/maps?q=${formattedAddress}`;
 }
-//formats google maps link
-registerAsyncHelper(Handlebars, 'get_maps', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(returnMapsLink(options['address'], options['city'], options['state'], options['postalCode']));
-  });
-});
-
-
-//formats date
-registerAsyncHelper(Handlebars, 'extract_date', function (options, context) {
-  return new Promise((resolve, reject) => {
-    resolve(new Date(options).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }));
-  });
-});
 
 
 //async funct for getting the query strings out of a url
@@ -139,19 +100,12 @@ function isObjectNotEmpty(obj) {
   return Object.keys(obj).length > 0;
 }
 
-
-async function handleRequest(request) {
-  //establish headers
+async function handleNextEventWidget(url) {
   const init = {
     headers: {
       'content-type': 'text/html',
     },
   };
-  //declare url to check if it isnt the correct path
-  const url = new URL(request.url);
-  //if url is not /v1/widget, throw not found error
-  if (url.pathname !== '/v1/widget/')
-    return errorResponse(404, "Not found");
   //await results of parseQueryParams
   const params = await parseQueryParams(url);
   //fetch jobBoardFeed, init
@@ -160,25 +114,6 @@ async function handleRequest(request) {
   const boardData = await gatherResponse(response);
   //if it has query params, return string of stuff
   console.log(params);
-  /** 
-    if (isObjectNotEmpty(params)){
-        const jsonCorsHeaders = {
-          headers: {
-              'content-type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET'
-          },
-        };
-        //check this path down the road - for now focus on tdevs one
-        console.log("HERE");
-        const filteredData= await filterTopLevelField(boardData, Object.values(params)[0]);
-        console.log("HERE");
-        console.log(await JSON.stringify(filteredData));
-        return new Response(await JSON.stringify(boardData["tampadevs"]), jsonCorsHeaders);
-        //else log boardData etc
-    } else {
-      **/
-
 
   const filteredData = await filterTopLevelField(JSON.stringify(boardData), Object.values(params)[0]);
   //console.log(await JSON.stringify(filteredData))
@@ -218,6 +153,35 @@ async function handleRequest(request) {
     }),
     init
   );
+}
+
+async function handleJsonEvents() {
+  res = new Response(await env.kv.get("event_data"), { status: 200 });
+  res.headers.set("Content-Type", "application/json");
+  return res;
+}
+
+function handleCorsRequest() {
+  var res = new Response(JSON.stringify({ message: 'Successfully added contact.' }), { status: 200 });
+  res.headers.set("Access-Control-Allow-Origin", "*");
+  res.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
+  return res;
+}
+
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  
+  if (request.method == 'OPTIONS') {
+    return handleCorsRequest();
+  }
+  
+  if (url.pathname === '/') {
+    return await handleJsonEvents();
+  } else if (url.pathname === '/v1/widget/') {
+    return await handleNextEventWidget(url);
+  } else {
+    return errorResponse(404, "Not found");
+  }
 
 }
 
